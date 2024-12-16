@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import random
 from sqlalchemy import create_engine
+import matplotlib.pyplot as plt
 
 CENSUS_API_KEY = "a04e80b745e5ab02d0d22161312ca4b7fa0cf548"
 CENSUS_API_URL = "https://api.census.gov/data/2020/acs/acs5"
@@ -19,7 +20,6 @@ def setup_database():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
-    # Create Income Data table
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS IncomeData (
@@ -30,7 +30,6 @@ def setup_database():
         """
     )
 
-    # Creaate BusinessCategory table
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS BusinessCategory (
@@ -39,7 +38,6 @@ def setup_database():
         """
     )
 
-    # Create YelpData table
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS YelpData (
@@ -221,6 +219,69 @@ def fetch_and_store_yelp_data():
         yelp_data = fetch_yelp_data(zip_code)
         save_yelp_data_to_database(yelp_data)
 
+def ave_yelp_ratings():
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT zip_code, AVG(rating) as avg_rating 
+    FROM YelpData 
+    GROUP BY zip_code
+    """)
+
+    result = cursor.fetchall()
+    conn.close()
+
+    return result
+
+def get_income_data():
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT zip_code, median_income FROM IncomeData")
+    result = cursor.fetchall()
+    conn.close()
+
+    return result
+
+def create_scatter_plot1(avg_ratings, income_data):
+    df_avg_ratings = pd.DataFrame(avg_ratings, columns=['zip_code', 'avg_rating'])
+    df_income_data = pd.DataFrame(income_data, columns=['zip_code', 'median_income'])
+
+    merged_df = pd.merge(df_avg_ratings, df_income_data, on='zip_code')
+
+    plt.figure(figsize=(10, 6))
+    plt.scatter(merged_df['median_income'], merged_df['avg_rating'], marker = "*", color = "red")
+    plt.title('Relationship between Median Household Income and Average Yelp Ratings by ZIP Code')
+    plt.xlabel('Median Household Income')
+    plt.ylabel('Average Yelp Rating')
+    plt.ylim(3,5)
+    plt.grid(True)
+    plt.savefig('Income_Ratings_Scatterplot.png')
+
+def business_count():
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    SELECT COUNT(yd.id) as business_count
+    FROM YelpData yd
+    JOIN BusinessCategory bc ON yd.category_id = bc.id
+    GROUP BY bc.category
+    """)
+
+    result = cursor.fetchall()
+    conn.close()
+    return [row[0] for row in result]
+
+def create_histogram(business_data):
+    plt.figure(figsize=(12, 8))
+    plt.hist(business_data, bins=range(min(business_data), max(business_data) + 1), color='blue')
+    plt.title('Histogram of Total Number of Businesses per Category')
+    plt.xlabel('Number of Businesses')
+    plt.ylabel('Frequency of Categories')
+    plt.savefig('Business_Category_Histogram.png')
+
 def main():
 
     setup_database()
@@ -234,6 +295,12 @@ def main():
     # Fetch and Store Yelp Data
     print("Fetching Yelp Data...")
     fetch_and_store_yelp_data()
+
+    print("Creating scatterplot...")
+    create_scatter_plot1(ave_yelp_ratings(), get_income_data())
+
+    print("Creating histogram...")
+    create_histogram(business_count())
     
 
 if __name__ == "__main__":
