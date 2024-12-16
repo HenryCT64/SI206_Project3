@@ -3,10 +3,14 @@ import sqlite3
 import os
 from bs4 import BeautifulSoup
 import pandas as pd
+import random
 from sqlalchemy import create_engine
 
 CENSUS_API_KEY = "a04e80b745e5ab02d0d22161312ca4b7fa0cf548"
 CENSUS_API_URL = "https://api.census.gov/data/2020/acs/acs5"
+
+YELP_API_KEY = "KjF7UADaggGSq9SzU4iXosZO9sYx-taIgJMiDMyA1lGWo8fcs0aCjkSIu2RmCrN_52mpOXbq5vK3zzdFpW1Cjn7rI-N-ICNP9TCUekqLXugR0aZCKZLXJb6dNY5gZ3Yx"
+YELP_API_URL = "https://api.yelp.com/v3/businesses/search"
 
 DATABASE_NAME = "project_data.db"
 
@@ -20,9 +24,32 @@ def setup_database():
         """
         CREATE TABLE IF NOT EXISTS IncomeData (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            zip_code TEXT NOT NULL,
+            zip_code TEXT NOT NULL UNIQUE,
             median_income INTEGER,
             population INTEGER );
+        """
+    )
+
+    # Creaate BusinessCategory table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS BusinessCategory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL UNIQUE );
+        """
+    )
+
+    # Create YelpData table
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS YelpData (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            business_name TEXT,
+            zip_code TEXT NOT NULL,
+            rating REAL,
+            num_reviews INTEGER,
+            category_id INTEGER NOT NULL,
+            FOREIGN KEY (category_id) REFERENCES BusinessCategory(id) );
         """
     )
 
@@ -94,8 +121,7 @@ def fetch_census_data():
     
     return processed_data
 
-
-def save_to_database(data):
+def save_census_data_to_database(data):
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
 
@@ -107,15 +133,108 @@ def save_to_database(data):
     conn.commit()
     conn.close()
 
+def fetch_yelp_data(zip_code):
+
+    headers = {"Authorization": f"Bearer {YELP_API_KEY}"}
+    params = {
+        "location": zip_code,
+        "limit": 5 # Only grab 5 businesses per zip each time file is run  
+    }
+
+    response = requests.get(YELP_API_URL, headers=headers, params=params)
+    response.raise_for_status()
+
+    data = response.json()
+    processed_data = []
+
+    for business in data.get("businesses", []):
+
+        try:
+
+            business_name = business["name"]
+            rating = business["rating"]
+            num_reviews = business["review_count"]
+            category = business["categories"][0]["title"] if business["categories"] else None
+            processed_data.append((business_name, zip_code, rating, num_reviews, category))
+
+        except KeyError:
+            continue
+    
+    return processed_data
+
+def get_or_create_category_id(category):
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        INSERT OR IGNORE INTO BusinessCategory (category) VALUES (?)
+    """, (category,))
+    conn.commit()
+
+    # Fetch the id of the category
+    cursor.execute("""
+        SELECT id FROM BusinessCategory WHERE category = ?
+    """, (category,))
+    category_id = cursor.fetchone()[0]
+
+    conn.close()
+    return category_id
+
+def save_yelp_data_to_database(data):
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    normalized_data = []
+    for business_name, zip_code, rating, num_reviews, category in data:
+        if not category:
+            continue  # Skip if the category is missing
+
+        # Get or create the category ID
+        category_id = get_or_create_category_id(category)
+
+        # Prepare data for insertion
+        normalized_data.append((business_name, zip_code, rating, num_reviews, category_id))
+
+    # Insert data into YelpData
+    cursor.executemany("""
+        INSERT INTO YelpData (business_name, zip_code, rating, num_reviews, category_id)
+        VALUES (?, ?, ?, ?, ?)
+    """, normalized_data)
+
+    conn.commit()
+    conn.close()
+
+def fetch_and_store_yelp_data():
+    conn = sqlite3.connect(DATABASE_NAME)
+    cursor = conn.cursor()
+
+    # Get all distinct ZIP codes from IncomeData
+    cursor.execute("SELECT zip_code FROM IncomeData")
+    zip_codes = [row[0] for row in cursor.fetchall()]
+    random.shuffle(zip_codes)
+    conn.close()
+
+    # only check 5 zip codes
+    zip_codes = zip_codes[:5]
+    
+    for zip_code in zip_codes:
+        yelp_data = fetch_yelp_data(zip_code)
+        save_yelp_data_to_database(yelp_data)
+
 def main():
 
     setup_database()
-
-    print("Fetching up top 25 distinct ZIP Codes from the Census data")
+    
+    # Obtain Census Data
+    print("Fetching up to 25 distinct ZIP Codes from the Census data")
     census_data = fetch_census_data()
-
-    save_to_database(census_data)
-    print(f"Saved {len(census_data)} new records to the database")
+    print(f"Saving {len(census_data)} new records to the database")
+    save_census_data_to_database(census_data)
+    
+    # Fetch and Store Yelp Data
+    print("Fetching Yelp Data...")
+    fetch_and_store_yelp_data()
+    
 
 if __name__ == "__main__":
     main()
