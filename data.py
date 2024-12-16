@@ -219,39 +219,24 @@ def fetch_and_store_yelp_data():
         yelp_data = fetch_yelp_data(zip_code)
         save_yelp_data_to_database(yelp_data)
 
-def ave_yelp_ratings():
+def ave_rating_income_join():
     conn = sqlite3.connect(DATABASE_NAME)
     cursor = conn.cursor()
-
     cursor.execute("""
-    SELECT zip_code, AVG(rating) as avg_rating 
-    FROM YelpData 
-    GROUP BY zip_code
+    SELECT yd.zip_code, AVG(yd.rating) as avg_rating, id.median_income
+    FROM YelpData yd
+    JOIN IncomeData id ON yd.zip_code = id.zip_code
+    GROUP BY yd.zip_code
     """)
-
     result = cursor.fetchall()
     conn.close()
-
     return result
 
-def get_income_data():
-    conn = sqlite3.connect(DATABASE_NAME)
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT zip_code, median_income FROM IncomeData")
-    result = cursor.fetchall()
-    conn.close()
-
-    return result
-
-def create_scatter_plot1(avg_ratings, income_data):
-    df_avg_ratings = pd.DataFrame(avg_ratings, columns=['zip_code', 'avg_rating'])
-    df_income_data = pd.DataFrame(income_data, columns=['zip_code', 'median_income'])
-
-    merged_df = pd.merge(df_avg_ratings, df_income_data, on='zip_code')
+def create_scatter_plot1(joined_data):
+    df = pd.DataFrame(joined_data, columns=['zip_code', 'avg_rating', 'median_income'])
 
     plt.figure(figsize=(10, 6))
-    plt.scatter(merged_df['median_income'], merged_df['avg_rating'], marker = "*", color = "red")
+    plt.scatter(df['median_income'], df['avg_rating'], marker = "*", color = "red")
     plt.title('Relationship between Median Household Income and Average Yelp Ratings by ZIP Code')
     plt.xlabel('Median Household Income')
     plt.ylabel('Average Yelp Rating')
@@ -297,7 +282,7 @@ def main():
     fetch_and_store_yelp_data()
 
     print("Creating scatterplot...")
-    create_scatter_plot1(ave_yelp_ratings(), get_income_data())
+    create_scatter_plot1(ave_rating_income_join())
 
     print("Creating histogram...")
     create_histogram(business_count())
