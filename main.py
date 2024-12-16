@@ -3,12 +3,10 @@ from bs4 import BeautifulSoup
 import pandas as pd
 from sqlalchemy import create_engine
 
-# Constants for API keys and URLs
 API_KEY = "a04e80b745e5ab02d0d22161312ca4b7fa0cf548"
 US_CENSUS_URL = "https://api.census.gov/data/{year}/acs/acs5"
 INT_CENSUS_URL = "https://api.census.gov/data/timeseries/idb/5year"
 
-# Remove footnotes from text
 def remove_footnotes(text):
     return text.split('[')[0].strip()
 
