@@ -290,7 +290,7 @@ def main():
             f.write(f"{row[0]}, {row[1]}, {row[2]}\n")
     
     with open('business_count.txt', 'w') as f:
-        f.write("Count\n")
+        f.write("Business_Count\n")
         for count in business_count_data:
             f.write(f"{count}\n")
 
