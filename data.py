@@ -281,11 +281,24 @@ def main():
     print("Fetching Yelp Data...")
     fetch_and_store_yelp_data()
 
+    rating_income_data = ave_rating_income_join()
+    business_count_data = business_count()
+
+    with open('rating_income.txt', 'w') as f:
+        f.write("ZIP Code, Average Rating, Median Income\n")
+        for row in rating_income_data:
+            f.write(f"{row[0]}, {row[1]}, {row[2]}\n")
+    
+    with open('business_count.txt', 'w') as f:
+        f.write("Count\n")
+        for count in business_count_data:
+            f.write(f"{count}\n")
+
     print("Creating scatterplot...")
-    create_scatter_plot1(ave_rating_income_join())
+    create_scatter_plot1(rating_income_data)
 
     print("Creating histogram...")
-    create_histogram(business_count())
+    create_histogram(business_count_data)
     
 
 if __name__ == "__main__":
